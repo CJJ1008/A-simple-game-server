@@ -474,31 +474,41 @@ static void sig_handler(int) { g_running = false; }
 // 返回 true = 已成功认证，false = 用户主动退出
 // ──────────────────────────────────────────────
 static bool login_ui() {
+    // 辅助：读一行并去除末尾 \r\n 以及重置 cin 状态
     auto read_line = [](const char* prompt) -> std::string {
-        std::cout << prompt;
-        std::cout.flush();
+        std::cout << prompt << std::flush;
         std::string s;
-        std::getline(std::cin, s);
+        if (!std::getline(std::cin, s)) {
+            std::cin.clear();   // 重置 eof/fail 状态，允许继续读
+            return "";
+        }
+        // 去除 Windows 风格 \r
+        if (!s.empty() && s.back() == '\r') s.pop_back();
         return s;
     };
 
+    // 辅助：关闭回显读密码，使用 TCSADRAIN（不丢弃已读缓冲）
     auto read_pass = [](const char* prompt) -> std::string {
-        std::cout << prompt;
-        std::cout.flush();
-        // 关闭回显读密码
-        struct termios t; tcgetattr(STDIN_FILENO, &t);
-        struct termios t2 = t; t2.c_lflag &= ~(tcflag_t)ECHO;
-        tcsetattr(STDIN_FILENO, TCSAFLUSH, &t2);
-        std::string s; std::getline(std::cin, s);
-        tcsetattr(STDIN_FILENO, TCSAFLUSH, &t);
+        std::cout << prompt << std::flush;
+        struct termios t, t2;
+        tcgetattr(STDIN_FILENO, &t);
+        t2 = t;
+        t2.c_lflag &= ~(tcflag_t)ECHO;
+        tcsetattr(STDIN_FILENO, TCSADRAIN, &t2);   // TCSADRAIN：等待输出完成后切换
+        std::string s;
+        if (!std::getline(std::cin, s)) { std::cin.clear(); s = ""; }
+        tcsetattr(STDIN_FILENO, TCSADRAIN, &t);    // 恢复 echo
+        if (!s.empty() && s.back() == '\r') s.pop_back();
         std::cout << "\n";
         return s;
     };
 
-    std::cout << CLS << HIDE;
+    // 清屏、标题
+    std::cout << CLS << SHOW;   // 登录阶段显示光标，方便用户看到输入位置
     std::cout << B << BGb << FW
-              << "  多人对战游戏 v3.0  —  请登录或注册  "
-              << R << "\n\n";
+              << "  多人对战游戏 v3.0  ——  账号登录  "
+              << R << "\n";
+    std::cout << DIM << "  (建议终端宽度 ≥ 80 列，高度 ≥ 40 行)" << R << "\n\n";
 
     while (true) {
         std::cout << FB << B
@@ -507,12 +517,21 @@ static bool login_ui() {
                   << "  [3]  退出\n\n"
                   << R;
         std::string choice = read_line("  请选择 > ");
+        // 去除空白
+        while (!choice.empty() && (choice.back()==' '||choice.back()=='\t'))
+            choice.pop_back();
 
         if (choice == "3" || choice == "q" || choice == "Q") return false;
+        if (choice != "1" && choice != "2") {
+            std::cout << FR << "  请输入 1、2 或 3\n\n" << R;
+            continue;
+        }
 
         bool is_register = (choice == "2");
 
         std::string username = read_line("  用户名 > ");
+        while (!username.empty() && (username.back()==' '||username.back()=='\t'))
+            username.pop_back();
         if (username.empty()) { std::cout << FR << "  用户名不能为空\n\n" << R; continue; }
 
         std::string password = read_pass("  密  码 > ");
@@ -526,32 +545,58 @@ static bool login_ui() {
         // 发包给服务器
         AuthPayload ap{};
         strncpy(ap.username, username.c_str(), 31);
+        ap.username[31] = '\0';
         strncpy(ap.password, password.c_str(), 63);
+        ap.password[63] = '\0';
 
         PacketType ptype = is_register ? PacketType::REGISTER : PacketType::LOGIN;
         if (send_packet(g_sockfd, ptype, &ap, sizeof(ap)) < 0) {
-            std::cout << FR << "  发送失败，请检查服务器连接\n\n" << R;
-            return false;
+            std::cout << FR << "  网络错误：发包失败，请检查服务器连接\n\n" << R;
+            return false;   // 真正的网络错误才退出
         }
 
-        // 等待 AUTH_RESULT
-        PacketHeader hdr{};
-        if (!recv_all(g_sockfd, &hdr, HEADER_SIZE) ||
-            hdr.type != PacketType::AUTH_RESULT) {
-            std::cout << FR << "  服务器无响应\n\n" << R;
-            return false;
-        }
+        // 等待 AUTH_RESULT。
+        // 关键修复：心跳线程与 login_ui 共享同一 socket；服务器对
+        // HEARTBEAT 的回应 HEARTBEAT_ACK(11) 可能在 AUTH_RESULT
+        // 之前抵达，必须在这里循环跳过心跳包，否则 recv_pkt 读错类型
+        // 就会打印"意外响应"并 continue，导致用户以为出了问题。
         AuthResultPayload ar{};
-        if (hdr.length>0) recv_all(g_sockfd, &ar, std::min((int)hdr.length,(int)sizeof(ar)));
+        bool got_result = false;
+        for (int wait_loop = 0; wait_loop < 32 && !got_result; ++wait_loop) {
+            PacketHeader hdr{};
+            if (!recv_all(g_sockfd, &hdr, HEADER_SIZE)) {
+                std::cout << FR << "  网络错误：连接断开\n\n" << R;
+                return false;
+            }
+            if (hdr.type == PacketType::HEARTBEAT) {
+                // 服务器主动心跳：回应它，然后继续等
+                send_packet(g_sockfd, PacketType::HEARTBEAT_ACK);
+                continue;
+            }
+            if (hdr.type == PacketType::HEARTBEAT_ACK) {
+                // 我们发出的心跳的回包：静默忽略，继续等
+                continue;
+            }
+            if (hdr.type != PacketType::AUTH_RESULT) {
+                if (hdr.length>0){char s[256]{};recv_all(g_sockfd,s,std::min((int)hdr.length,256));}
+                continue;
+            }
+            if (hdr.length>0) recv_all(g_sockfd, &ar, std::min((int)hdr.length,(int)sizeof(ar)));
+            got_result = true;
+        }
+        if (!got_result) {
+            std::cout << FR << "  未收到服务器响应，请重试\n\n" << R;
+            continue;
+        }
 
         if (ar.success) {
             g_username = ar.username;
             std::cout << FG << B << "\n  ✓ " << ar.message
-                      << "，欢迎 " << ar.username << "！\n"
-                      << R;
+                      << "，欢迎 " << ar.username << "！\n" << R;
             std::this_thread::sleep_for(std::chrono::milliseconds(600));
             return true;
         } else {
+            // 认证失败：显示原因，循环让用户重试（服务器保持连接）
             std::cout << FR << "\n  ✗ " << ar.message << "\n\n" << R;
         }
     }
@@ -561,25 +606,33 @@ static bool login_ui() {
 // 查询战绩对话框（在 raw 模式中调用，临时切回 cooked）
 // ──────────────────────────────────────────────
 static void query_stats_dialog() {
+    // 暂时离开 raw 模式，恢复 cooked + echo + 阻塞，让用户正常输入
     leave_raw();
-    std::cout << "\n  查询用户名（空=查自己）> ";
-    std::cout.flush();
+    // 清除 cin 可能的 eof/fail 状态
+    std::cin.clear();
 
-    // 设为阻塞
-    fcntl(STDIN_FILENO, F_SETFL,
-          fcntl(STDIN_FILENO, F_GETFL, 0) & ~O_NONBLOCK);
+    std::cout << "\n" << B << "  查询战绩 — 输入用户名（直接回车=查自己）> " << R;
+    std::cout.flush();
 
     std::string target;
     std::getline(std::cin, target);
+    std::cin.clear();
+    // 去除 \r 和前后空白
+    if (!target.empty() && target.back() == '\r') target.pop_back();
+    while (!target.empty() && target.back() == ' ') target.pop_back();
 
     StatsRequestPayload srp{};
     strncpy(srp.username, target.c_str(), 31);
+    srp.username[31] = '\0';
     send_packet(g_sockfd, PacketType::STATS_REQUEST, &srp, sizeof(srp));
 
+    // 切换到战绩视图，清屏确保干净起点
+    std::cout << CLS << HIDE << std::flush;
+    g_prev.clear();          // 清除旧帧缓冲，强制全量重绘
     enter_raw();
-    g_view       = View::STATS;
+    g_view        = View::STATS;
     g_first_paint = true;
-    // 等 recv_thread 收到响应后触发渲染
+    // 等 recv_thread 收到 STATS_RESPONSE 后触发渲染
 }
 
 // ──────────────────────────────────────────────
@@ -618,8 +671,17 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // ── 登录/注册 UI（cooked 模式）──
+    // ── 登录前立即启动心跳线程 ──
+    // 关键修复：login_ui() 可能耗时数十秒（用户慢慢输入），
+    // 必须在此之前保持心跳，否则服务器 8 秒后踢出连接。
+    // send（心跳线程）和 recv（login_ui 主线程）方向相反，
+    // TCP 全双工，两者并发访问同一 socket 是安全的。
+    std::thread hb_t(hb_thread_fn);
+
+    // ── 登录/注册 UI（cooked 模式，主线程负责收发认证包）──
     if (!login_ui()) {
+        g_running = false;
+        if (hb_t.joinable()) hb_t.join();
         close(g_sockfd);
         std::cout << CLS << "再见！\n" << SHOW;
         return 0;
@@ -628,12 +690,12 @@ int main(int argc, char* argv[]) {
     // 通知服务器进入房间
     send_packet(g_sockfd, PacketType::JOIN);
 
-    // ── 进入 raw 模式，启动后台线程 ──
+    // ── 进入 raw 模式，启动接收线程 ──
     std::cout << CLS << HIDE << std::flush;
     enter_raw();
 
     std::thread recv_t(recv_thread_fn);
-    std::thread hb_t(hb_thread_fn);
+    // hb_t 已在 connect 后启动，此处不重复创建
 
     g_first_paint = true;
     g_prev.clear();
@@ -673,9 +735,12 @@ int main(int argc, char* argv[]) {
             } else { // STATS view
                 switch (ch) {
                     case 'q': case 'Q':
-                        g_view       = View::GAME;
+                        // 清屏后回到游戏界面，彻底擦除战绩页残留内容
+                        std::cout << CLS << HIDE << std::flush;
+                        g_prev.clear();         // 强制下次全量重绘
+                        g_view        = View::GAME;
                         g_first_paint = true;
-                        g_game_dirty  = true;  // 强制重绘游戏界面
+                        g_game_dirty  = true;
                         break;
                     case 's': case 'S':
                         query_stats_dialog();  // 再查一次
@@ -716,6 +781,7 @@ int main(int argc, char* argv[]) {
 
     // ── 清理 ──
     leave_raw();
+    g_running = false;  // 通知所有线程退出
     send_packet(g_sockfd, PacketType::DISCONNECT);
     close(g_sockfd);
     if (recv_t.joinable()) recv_t.join();

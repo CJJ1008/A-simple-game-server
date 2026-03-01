@@ -12,8 +12,8 @@
 // 游戏常量
 // ──────────────────────────────────────────────
 constexpr int MAX_PLAYERS     = 5;    // 最多 5 人同时在线
-constexpr int MAP_W           = 50;   // 地图宽（格）
-constexpr int MAP_H           = 20;   // 地图高（格）
+constexpr int MAP_W           = 36;   // 地图宽（格）36格×2字符=72 + 边框4 = 76列，80列终端可容纳
+constexpr int MAP_H           = 16;   // 地图高（格）
 constexpr int MAX_HEALTH      = 100;  // 初始血量
 constexpr int ATTACK_DAMAGE   = 15;   // 普通攻击伤害
 constexpr int POWER_DAMAGE    = 30;   // 武器攻击伤害（×2）
