@@ -128,7 +128,7 @@ cd student
 go run ./cmd/server
 
 # 终端 2：启动客户端 1
-go run .cmd/client
+go run ./cmd/client
 
 # 终端 3：启动客户端 2（另开一个窗口）
 cd student
