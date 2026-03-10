@@ -25,19 +25,19 @@ go.sum
 *.ipr
 
 # ==================== 通用开发文件 ====================
-# Mac 系统文件
-.DS_Store
-.AppleDouble
-.LSOverride
-Icon
-._*
-.DocumentRevisions-V100
-.fseventsd
-.Spotlight-V100
-.TemporaryItems
-.Trashes
-.VolumeIcon.icns
-.com.apple.timemachine.donotpresent
+# Mac 系统文件（所有目录都忽略）
+**/.DS_Store
+**/.AppleDouble
+**/.LSOverride
+**/Icon
+**/._*
+**/.DocumentRevisions-V100
+**/.fseventsd
+**/.Spotlight-V100
+**/.TemporaryItems
+**/.Trashes
+**/.VolumeIcon.icns
+**/.com.apple.timemachine.donotpresent
 
 # VS Code 配置
 .vscode/
@@ -52,10 +52,8 @@ logs/
 *.temp
 *.swp
 *.swo
-.DS_Store
 
 # ==================== Jupyter Notebook ====================
-# 忽略 Notebook 检查点文件
-.ipynb_checkpoints/
-*/.ipynb_checkpoints/*
-*.ipynb~
+# 忽略 Notebook 检查点文件（所有目录）
+**/.ipynb_checkpoints/
+**/*.ipynb~
