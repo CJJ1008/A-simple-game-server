@@ -180,14 +180,24 @@ go func() {
     for {
         msg, err := conn.Receive()
         if err != nil {
-            fmt.Println("断开")
+            addEvent("与服务器的连接已断开。")
+            drawUI()
             return
         }
         switch msg.Type {
-        case protocol.TypeInit:      // 保存 myID，打印欢迎
-        case protocol.TypeBroadcast: // 调用 renderState
-        case protocol.TypeEvent:     // 打印事件
-        case protocol.TypeGameOver:  // 打印结果
+        case protocol.TypeInit:
+            myPlayerID = msg.YourID
+            addEvent(fmt.Sprintf("🎮 %s（你的ID: %d）", msg.Text, myPlayerID))
+            drawUI()
+        case protocol.TypeBroadcast:
+            updateSnapshot(msg)
+            drawUI()
+        case protocol.TypeEvent:
+            addEvent(msg.Text)
+            drawUI()
+        case protocol.TypeGameOver:
+            addEvent(fmt.Sprintf("💀 游戏通知: %s", msg.Winner))
+            drawUI()
         }
     }
 }()
@@ -248,6 +258,10 @@ bash run_test.sh            # 测试 student 目录（含 -race 检测）
 ```bash
 # 先启动服务器
 cd student && go run ./cmd/server &
+# 可能端口会被占用 运行下面命令
+PID=$(lsof -ti :9001)
+kill -9 $PID
+
 # 运行指定测试
 cd test
 go run autotest.go 1   # 多客户端并发连接

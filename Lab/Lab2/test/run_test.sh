@@ -66,13 +66,13 @@ fi
 title "启动服务器..."
 
 # 先清理端口
-PID=$(lsof -ti :$PORT)
+# PID=$(lsof -ti :$PORT)
 
-if [ -n "$PID" ]; then
-  info "检测到端口 $PORT 被占用，正在清理..."
-  kill -9 $PID
-  sleep 1
-fi
+# if [ -n "$PID" ]; then
+#   info "检测到端口 $PORT 被占用，正在清理..."
+#   kill -9 $PID
+#   sleep 1
+# fi
 
 # 再等待端口真正释放
 for i in $(seq 1 10); do

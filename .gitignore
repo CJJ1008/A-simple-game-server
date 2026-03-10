@@ -1,0 +1,55 @@
+# ==================== Go 项目专属 ====================
+# 编译生成的可执行文件
+/bin/
+/obj/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.out
+
+# Go 模块缓存
+/pkg/
+/vendor/
+
+# Go 构建缓存
+go.sum
+*.test
+*.prof
+
+# GoLand/IDE 生成文件
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# ==================== 通用开发文件 ====================
+# Mac 系统文件
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# VS Code 配置
+.vscode/
+*.code-workspace
+
+# 日志文件
+*.log
+logs/
+
+# 临时文件
+*.tmp
+*.temp
+*.swp
+*.swo
+.DS_Store
