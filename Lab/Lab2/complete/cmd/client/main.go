@@ -137,8 +137,16 @@ func main() {
 
 	conn := protocol.NewConn(raw)
 	conn.Send(protocol.Message{Type: protocol.TypeJoin, Text: name})
-	
+
 	addEvent("✅ 已连接，开始游戏！（随时可输入指令）")
+	addEvent("⌨ 即时按键：W/A/S/D 移动 F 攻击 H 治疗 Q 退出")
+
+	restoreTTY, err := enterRawMode()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "切换终端即时输入模式失败: %v\n", err)
+		os.Exit(1)
+	}
+	defer restoreTTY()
 
 	done := make(chan struct{})
 
@@ -169,45 +177,46 @@ func main() {
 		}
 	}()
 
+	keyReader := bufio.NewReader(os.Stdin)
 	for {
 		select {
 		case <-done:
 			return
 		default:
 		}
-		
-		in, err := reader.ReadString('\n')
+
+		key, err := keyReader.ReadByte()
 		if err != nil {
 			return
 		}
-		in = strings.TrimSpace(strings.ToLower(in))
-		if in == "" {
+		if key == 3 {
+			return
+		}
+		if key == '\r' || key == '\n' {
 			continue
 		}
 
 		var msg protocol.Message
-		switch in {
-		case "w":
+		switch key {
+		case 'w', 'W':
 			msg = protocol.Message{Type: protocol.TypeMove, Dir: protocol.DirUp}
-		case "s":
+		case 's', 'S':
 			msg = protocol.Message{Type: protocol.TypeMove, Dir: protocol.DirDown}
-		case "a":
+		case 'a', 'A':
 			msg = protocol.Message{Type: protocol.TypeMove, Dir: protocol.DirLeft}
-		case "d":
+		case 'd', 'D':
 			msg = protocol.Message{Type: protocol.TypeMove, Dir: protocol.DirRight}
-		case "f":
+		case 'f', 'F':
 			msg = protocol.Message{Type: protocol.TypeAttack}
-		case "h":
+		case 'h', 'H':
 			msg = protocol.Message{Type: protocol.TypeHeal}
-		case "?", "help":
-			addEvent("操作指令: w/s/a/d(移动) f(攻击) h(治疗) q(退出)")
+		case '?':
+			addEvent("操作指令: W/A/S/D(移动) F(攻击) H(治疗) Q(退出)")
 			drawUI()
 			continue
-		case "q", "quit":
+		case 'q', 'Q':
 			return
 		default:
-			addEvent("⚠ 未知指令，输入 ? 查看帮助")
-			drawUI()
 			continue
 		}
 		conn.Send(msg)

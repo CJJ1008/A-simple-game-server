@@ -68,11 +68,14 @@ Lab2/
 │   ├── world/world.go        ★ 需填写 C-1~C-5 五个函数
 │   └── cmd/                  
 │       ├── server/main.go    ★ 需填写 D-1、D-2 两处 Goroutine 启动
-│       └── client/main.go    ★ 需填写 E：接收 Goroutine
+│       ├── client/main.go    ★ 需填写 E：接收 Goroutine
+│       └── client/raw_mode_*.go  已提供，即时按键所需的跨平台终端输入辅助
 │
 └── test/
     ├── autotest.go    自动测试程序
-    └── run_test.sh    一键测试脚本（含 -race 数据竞争检测）
+    ├── run_test.sh    macOS / Linux 一键测试脚本
+    ├── run_test.bat   Windows 一键测试脚本
+    └── runner/main.go 跨平台测试入口
 ```
 
 ---
@@ -172,7 +175,7 @@ go handleClient(w, raw)  // ← 并发，可同时服务多人
 
 ### 任务 E：客户端接收 Goroutine（`student/cmd/client/main.go`）
 
-在 `main` 函数中，键盘读取循环之前，启动一个后台 Goroutine 专门接收服务器消息：
+Lab2 客户端已经改成即时按键模式，不需要按回车。主 Goroutine 会阻塞在单字节按键读取上，因此仍然必须在键盘读取循环之前启动一个后台 Goroutine 专门接收服务器消息：
 
 ```go
 go func() {
@@ -204,13 +207,21 @@ go func() {
 ```
 
 **为什么需要两个 Goroutine？**
-- main Goroutine 阻塞在 `reader.ReadString('\n')` 等待键盘输入
+- main Goroutine 阻塞在 `ReadByte()` 等待即时按键
 - 若没有第二个 Goroutine，就无法同时接收服务器推送的状态更新
-- 两个 Goroutine 并发运行，实现"边听键盘边收网络"
+- 两个 Goroutine 并发运行，实现"边按键边收网络"
 
 ---
 
 ## 6. 运行方法
+
+> 平台兼容说明：
+> Lab2 的服务端和客户端代码可在 Windows、macOS、Linux 下运行。
+> 测试入口也已提供跨平台版本，不再依赖 `lsof`、`nc` 等 Unix 工具。
+
+> 操作说明：
+> 客户端现在使用即时按键输入，不需要回车。
+> `W/A/S/D` 移动，`F` 攻击，`H` 治疗，`Q` 退出。
 
 ### 6.1 手动运行
 
@@ -222,6 +233,8 @@ go run ./cmd/server
 # 终端 2、3、4...：多个客户端同时连接
 go run ./cmd/client
 ```
+
+客户端启动后直接按键即可，不需要输入命令后再按回车。
 
 ### 6.2 数据竞争检测（重要！）
 
@@ -242,32 +255,55 @@ Write at 0x... by goroutine 7:
 
 正确实现后，`-race` 模式下不应有任何 `DATA RACE` 警告。
 
+> 说明：
+> 某些平台或 Go 工具链组合下，`-race` 可能不可用。
+> 当前一键测试入口会自动尝试 `-race`，若不可用会回退到普通模式。
+
 ---
 
 ## 7. 测试方法
 
 ### 7.1 一键测试（推荐）
 
+macOS / Linux：
+
 ```bash
 cd test
-bash run_test.sh            # 测试 student 目录（含 -race 检测）
+./run_test.sh
+```
+
+Windows：
+
+```bat
+cd test
+run_test.bat
+```
+
+也可以直接使用跨平台 Go 测试入口：
+
+```bash
+cd test
+go run ./runner/main.go
 ```
 
 ### 7.2 单项测试
 
 ```bash
 # 先启动服务器
-cd student && go run ./cmd/server &
-# 可能端口会被占用 运行下面命令
-PID=$(lsof -ti :9001)
-kill -9 $PID
+cd student
+go run ./cmd/server
 
 # 运行指定测试
-cd test
+cd ../test
 go run autotest.go 1   # 多客户端并发连接
 go run autotest.go 4   # 移动边界
 go run autotest.go 7   # 广播 Goroutine
 ```
+
+> 说明：
+> 单项测试本身是跨平台的，真正需要区分平台的是一键测试脚本：
+> - macOS / Linux 使用 `run_test.sh`
+> - Windows 使用 `run_test.bat`
 
 ### 7.3 测试用例说明
 
@@ -310,3 +346,7 @@ go run autotest.go 7   # 广播 Goroutine
 **原因**：任务 E 的接收 Goroutine 未实现，键盘读取阻塞了接收循环。
 **修复**：在 `go func(){...}()` 中处理 `TypeBroadcast`，调用 `renderState`。
 
+### 错误：按键没有即时生效，必须按回车
+
+**原因**：终端未切换到即时按键模式，或者误把旧版 `ReadString('\n')` 逻辑保留在客户端主循环中。
+**修复**：确认客户端主循环使用单字节读取，并在启动时进入 raw mode。

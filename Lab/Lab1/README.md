@@ -48,7 +48,9 @@ Lab1/
 │
 └── test/
     ├── autotest.go    自动测试程序
-    └── run_test.sh    一键测试脚本
+    ├── run_test.sh    macOS / Linux 一键测试脚本
+    ├── run_test.bat   Windows 一键测试脚本
+    └── runner/main.go 跨平台测试入口
 ```
 
 ---
@@ -120,6 +122,10 @@ func (c *Conn) Receive() (Message, error) {
 
 ## 5. 运行方法
 
+> 平台兼容说明：
+> Lab1 的服务端和客户端代码可在 Windows、macOS、Linux 下运行。
+> 只要本机安装了 Go，即可直接使用 `go run` 启动。
+
 ### 5.1 手动运行（两个终端）
 
 ```bash
@@ -142,9 +148,25 @@ go run ./cmd/client
 
 ### 6.1 一键测试（推荐）
 
+macOS / Linux：
+
 ```bash
 cd test
-bash run_test.sh            # 测试 student 目录
+./run_test.sh
+```
+
+Windows：
+
+```bat
+cd test
+run_test.bat
+```
+
+也可以直接使用跨平台 Go 测试入口：
+
+```bash
+cd test
+go run ./runner/main.go
 ```
 
 测试脚本会：
@@ -157,12 +179,20 @@ bash run_test.sh            # 测试 student 目录
 
 ```bash
 # 先在另一个终端启动服务器
-cd student && go run ./cmd/server &
-# 运行指定测试
-cd test && go run autotest.go 1   # 测试连接握手
-cd test && go run autotest.go 2   # 测试移动边界
-cd test && go run autotest.go 4   # 测试攻击范围
+cd student
+go run ./cmd/server
+
+# 再在当前终端运行指定测试
+cd ../test
+go run autotest.go 1   # 测试连接握手
+go run autotest.go 2   # 测试移动边界
+go run autotest.go 4   # 测试攻击范围
 ```
+
+> 说明：
+> 单项测试本身是跨平台的，真正需要区分平台的是一键测试脚本：
+> - macOS / Linux 使用 `run_test.sh`
+> - Windows 使用 `run_test.bat`
 
 ### 6.3 测试用例说明
 
@@ -175,7 +205,6 @@ cd test && go run autotest.go 4   # 测试攻击范围
 | Test 5 | 攻击距离检测 | 任务 B-2 |
 | Test 6 | 满血使用药水不超上限（已给实现） | 参考验证 |
 | Test 7 | 断线自动游戏结束 | 综合 |
-
 
 ---
 

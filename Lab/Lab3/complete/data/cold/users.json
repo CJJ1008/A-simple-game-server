@@ -1,1 +1,19 @@
-{}
+{
+  "cjj": {
+    "username": "cjj",
+    "password_hash": "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4",
+    "last_map": "cave",
+    "last_node": "node-b",
+    "x": 28,
+    "y": 18,
+    "hp": 120,
+    "max_hp": 120,
+    "attack": 35,
+    "potions": 3,
+    "treasures": 13,
+    "kills": 0,
+    "deaths": 1,
+    "victories": 0,
+    "alive": true
+  }
+}

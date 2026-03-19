@@ -358,7 +358,15 @@ func (w *World) BackgroundStep() []string {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	events := make([]string, 0, 4)
+	events := make([]string, 0, 6)
+
+	for _, player := range w.players {
+		wasAlive := player.Alive
+		w.refreshPlayerStateLocked(player)
+		if !wasAlive && player.Alive {
+			events = append(events, fmt.Sprintf("%s 已在营地复活", player.Username))
+		}
+	}
 
 	for len(w.npcs) < protocol.MinNPCs {
 		if npc := w.spawnNPCLocked(); npc != nil {
@@ -653,7 +661,7 @@ func (w *World) closestPlayerLocked(x, y, radius int) *Player {
 }
 
 func (w *World) spawnNPCLocked() *NPC {
-	x, y, ok := w.randomOpenCellSpreadLocked("", 6)
+	x, y, ok := w.bestSpawnCellLocked("", true)
 	if !ok {
 		return nil
 	}
@@ -676,7 +684,7 @@ func (w *World) spawnNPCLocked() *NPC {
 }
 
 func (w *World) spawnTreasureLocked(kind string) *Treasure {
-	x, y, ok := w.randomOpenCellSpreadLocked("", 3)
+	x, y, ok := w.bestSpawnCellLocked("", false)
 	if !ok {
 		return nil
 	}
@@ -757,40 +765,49 @@ func (w *World) findSafePositionLocked(preferredX, preferredY int, ignorePlayer 
 	if w.walkableForLocked(preferredX, preferredY, ignorePlayer) {
 		return preferredX, preferredY
 	}
-	x, y, ok := w.randomOpenCellSpreadLocked(ignorePlayer, 4)
+	x, y, ok := w.bestSpawnCellLocked(ignorePlayer, true)
 	if ok {
 		return x, y
 	}
 	return w.cfg.SpawnX, w.cfg.SpawnY
 }
 
-func (w *World) randomOpenCellSpreadLocked(ignorePlayer string, minGap int) (int, int, bool) {
-	bestX, bestY := 0, 0
-	bestScore := -1
-	found := false
-	for tries := 0; tries < 96; tries++ {
-		x := w.rng.Intn(len(w.terrain[0]))
-		y := w.rng.Intn(len(w.terrain))
-		if !w.walkableForLocked(x, y, ignorePlayer) {
-			continue
-		}
-		score := w.spawnScoreLocked(x, y)
-		if !found || score > bestScore {
-			bestX, bestY = x, y
-			bestScore = score
-			found = true
-		}
-		if score >= minGap {
-			return x, y, true
+func (w *World) bestSpawnCellLocked(ignorePlayer string, preferNPC bool) (int, int, bool) {
+	type candidate struct {
+		x     int
+		y     int
+		score int
+	}
+	candidates := make([]candidate, 0, len(w.terrain)*len(w.terrain[0]))
+	for y := 0; y < len(w.terrain); y++ {
+		for x := 0; x < len(w.terrain[y]); x++ {
+			if !w.walkableForLocked(x, y, ignorePlayer) {
+				continue
+			}
+			candidates = append(candidates, candidate{x: x, y: y, score: w.spawnScoreLocked(x, y, preferNPC)})
 		}
 	}
-	if found {
-		return bestX, bestY, true
+	if len(candidates) == 0 {
+		return 0, 0, false
 	}
-	return w.randomOpenCellLocked(ignorePlayer)
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].score == candidates[j].score {
+			if candidates[i].y == candidates[j].y {
+				return candidates[i].x < candidates[j].x
+			}
+			return candidates[i].y < candidates[j].y
+		}
+		return candidates[i].score > candidates[j].score
+	})
+	limit := 12
+	if len(candidates) < limit {
+		limit = len(candidates)
+	}
+	pick := candidates[w.rng.Intn(limit)]
+	return pick.x, pick.y, true
 }
 
-func (w *World) spawnScoreLocked(x, y int) int {
+func (w *World) spawnScoreLocked(x, y int, preferNPC bool) int {
 	bestNPC := protocol.MapWidth + protocol.MapHeight
 	for _, npc := range w.npcs {
 		if !npc.Alive {
@@ -809,7 +826,21 @@ func (w *World) spawnScoreLocked(x, y int) int {
 			bestPlayer = d
 		}
 	}
-	return bestNPC*3 + bestPlayer + distance(x, y, w.cfg.SpawnX, w.cfg.SpawnY)/2
+	bestTreasure := protocol.MapWidth + protocol.MapHeight
+	for _, treasure := range w.treasures {
+		if d := distance(x, y, treasure.X, treasure.Y); d < bestTreasure {
+			bestTreasure = d
+		}
+	}
+	width := len(w.terrain[0])
+	height := len(w.terrain)
+	edgeMargin := min(min(x, width-1-x), min(y, height-1-y))
+	centerDist := distance(x, y, width/2, height/2)
+	score := bestNPC*120 + bestPlayer*20 + bestTreasure*15 + edgeMargin*30 - centerDist*3
+	if preferNPC {
+		score += distance(x, y, w.cfg.SpawnX, w.cfg.SpawnY) * 2
+	}
+	return score
 }
 
 func (w *World) knockDownPlayerLocked(player *Player) {
@@ -818,10 +849,6 @@ func (w *World) knockDownPlayerLocked(player *Player) {
 	player.Deaths++
 	player.RespawnAt = time.Now().Add(4 * time.Second)
 	player.LastUpdate = time.Now()
-	go func(name string) {
-		time.Sleep(4 * time.Second)
-		w.respawnPlayer(name)
-	}(player.Username)
 }
 
 func (w *World) refreshPlayerStateLocked(player *Player) {
@@ -1027,6 +1054,13 @@ func buildRuinsMap() MapConfig {
 
 func max(a, b int) int {
 	if a > b {
+		return a
+	}
+	return b
+}
+
+func min(a, b int) int {
+	if a < b {
 		return a
 	}
 	return b

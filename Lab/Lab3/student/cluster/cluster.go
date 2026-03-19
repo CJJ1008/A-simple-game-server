@@ -1082,19 +1082,6 @@ func max(a, b int) int {
 	return b
 }
 
-func studentTODOError(label, funcName, detail string) error {
-	logStudentTODO(label, funcName, detail)
-	return fmt.Errorf("[%s] TODO 未实现：%s，需要%s", label, funcName, detail)
-}
-
-func logStudentTODO(label, funcName, detail string) {
-	key := label + ":" + funcName
-	if _, loaded := studentTodoNotice.LoadOrStore(key, struct{}{}); loaded {
-		return
-	}
-	fmt.Fprintf(os.Stderr, "[%s] student 待实现函数被触发：%s，需要%s\n", label, funcName, detail)
-}
-
 func manhattan(ax, ay, bx, by int) int {
 	dx := ax - bx
 	if dx < 0 {
@@ -1105,4 +1092,16 @@ func manhattan(ax, ay, bx, by int) int {
 		dy = -dy
 	}
 	return dx + dy
+}
+
+func studentTODOError(label, funcName, detail string) error {
+	logStudentTODO(label, funcName, detail)
+	return fmt.Errorf("[%s] TODO 未实现：%s，需要%s", label, funcName, detail)
+}
+
+func logStudentTODO(label, funcName, detail string) {
+	if _, loaded := studentTodoNotice.LoadOrStore(label, struct{}{}); loaded {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "[%s] student 待实现函数被触发：%s，需要%s\n", label, funcName, detail)
 }

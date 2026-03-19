@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"os/exec"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -564,24 +562,6 @@ func inBounds(grid [][]rune, x, y int) bool {
 func readLine(reader *bufio.Reader) string {
 	text, _ := reader.ReadString('\n')
 	return strings.TrimSpace(text)
-}
-
-func enterRawMode() (func(), error) {
-	flag := "-f"
-	if runtime.GOOS != "darwin" {
-		flag = "-F"
-	}
-	state, err := exec.Command("stty", flag, "/dev/tty", "-g").Output()
-	if err != nil {
-		return nil, err
-	}
-	original := strings.TrimSpace(string(state))
-	if err := exec.Command("stty", flag, "/dev/tty", "cbreak", "min", "1", "-echo").Run(); err != nil {
-		return nil, err
-	}
-	return func() {
-		_ = exec.Command("stty", flag, "/dev/tty", original).Run()
-	}, nil
 }
 
 func manhattan(ax, ay, bx, by int) int {
