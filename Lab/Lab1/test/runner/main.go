@@ -13,7 +13,7 @@ import (
 const port = 9000
 
 func main() {
-	target := "student"
+	target := "complete"
 	if len(os.Args) > 1 && os.Args[1] != "" {
 		target = os.Args[1]
 	}

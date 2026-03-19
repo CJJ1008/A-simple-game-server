@@ -13,7 +13,7 @@ import (
 var ports = []int{9310, 9311, 9312, 9313}
 
 func main() {
-	target := "student"
+	target := "complete"
 	args := os.Args[1:]
 	if len(args) > 0 && (args[0] == "student" || args[0] == "complete") {
 		target = args[0]
