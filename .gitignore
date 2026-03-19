@@ -57,3 +57,7 @@ logs/
 # 忽略 Notebook 检查点文件（所有目录）
 **/.ipynb_checkpoints/
 **/*.ipynb~
+
+# 进阶：忽略所有目录下的 .gocache（比如子目录里的 .gocache）
+**/.gocache
+**/.gocache/
