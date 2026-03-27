@@ -7,6 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -30,6 +33,10 @@ func main() {
 	cacheDir := filepath.Join(labDir, ".gocache")
 	_ = os.MkdirAll(cacheDir, 0o755)
 
+	// 启动前先清理残留端口
+	fmt.Println("检查并清理残留端口...")
+	cleanupPorts()
+
 	if occupied := occupiedPorts(); len(occupied) > 0 {
 		fmt.Fprintf(os.Stderr, "检测到端口被占用，无法启动 %s 服务：%v\n", target, occupied)
 		os.Exit(1)
@@ -49,9 +56,16 @@ func main() {
 			fmt.Fprintln(os.Stderr, "服务端日志：")
 			fmt.Fprint(os.Stderr, logs.String())
 		}
+		cleanupPorts()
 		os.Exit(1)
 	}
-	defer stopServer(server)
+
+	// 测试结束后无论成功失败都清理
+	defer func() {
+		stopServer(server)
+		fmt.Println("清理端口占用...")
+		cleanupPorts()
+	}()
 
 	if err := runAutotest(testDir, cacheDir, args...); err != nil {
 		fmt.Fprintln(os.Stderr)
@@ -124,4 +138,100 @@ func canDial(port int) bool {
 func withGoCache(cacheDir string) []string {
 	env := os.Environ()
 	return append(env, "GOCACHE="+cacheDir)
+}
+
+// cleanupPorts 跨平台清理占用端口的进程
+func cleanupPorts() {
+	for _, port := range ports {
+		if !canDial(port) {
+			continue
+		}
+		pids := findPIDsByPort(port)
+		for _, pid := range pids {
+			killPID(pid)
+			fmt.Printf("  已清理端口 %d (pid=%d)\n", port, pid)
+		}
+	}
+}
+
+// findPIDsByPort 跨平台查找占用指定端口的 PID 列表
+func findPIDsByPort(port int) []int {
+	switch runtime.GOOS {
+	case "windows":
+		return findPIDsWindows(port)
+	default:
+		return findPIDsUnix(port)
+	}
+}
+
+// findPIDsUnix 在 macOS / Linux 上用 lsof 查找 PID
+func findPIDsUnix(port int) []int {
+	cmd := exec.Command("lsof", "-ti", fmt.Sprintf(":%d", port))
+	out, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+	return parsePIDs(string(out))
+}
+
+// findPIDsWindows 在 Windows 上用 netstat 查找 PID
+func findPIDsWindows(port int) []int {
+	cmd := exec.Command("netstat", "-ano")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+	target := fmt.Sprintf(":%d", port)
+	var pids []int
+	seen := map[int]bool{}
+	for _, line := range strings.Split(string(out), "\n") {
+		fields := strings.Fields(line)
+		// netstat -ano 格式：协议 本地地址 外部地址 状态 PID
+		if len(fields) < 5 {
+			continue
+		}
+		if !strings.Contains(fields[1], target) {
+			continue
+		}
+		pid, err := strconv.Atoi(fields[len(fields)-1])
+		if err != nil || pid == 0 || seen[pid] {
+			continue
+		}
+		seen[pid] = true
+		pids = append(pids, pid)
+	}
+	return pids
+}
+
+// parsePIDs 解析 lsof 输出的多行 PID
+func parsePIDs(output string) []int {
+	var pids []int
+	seen := map[int]bool{}
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		pid, err := strconv.Atoi(line)
+		if err != nil || pid == 0 || seen[pid] {
+			continue
+		}
+		seen[pid] = true
+		pids = append(pids, pid)
+	}
+	return pids
+}
+
+// killPID 跨平台杀死指定 PID
+func killPID(pid int) {
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return
+	}
+	if runtime.GOOS == "windows" {
+		_ = proc.Kill()
+	} else {
+		// Unix：先发 SIGKILL
+		_ = proc.Kill()
+	}
 }

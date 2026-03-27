@@ -84,6 +84,14 @@ type MapView struct {
 	NodeID  string       `json:"node_id"`
 	Terrain []string     `json:"terrain"`
 	Players []PlayerView `json:"players"`
+	NPCs    []NPCView    `json:"npcs"` // 加上这行
+}
+
+type NPCView struct {
+	ID    string `json:"id"`
+	X     int    `json:"x"`
+	Y     int    `json:"y"`
+	Alive bool   `json:"alive"`
 }
 
 type MapBrief struct {
@@ -596,37 +604,61 @@ func walkToBossRange(client *Client, state *WorldState) (*WorldState, error) {
 
 func walkToRange(client *Client, state *WorldState, targetX, targetY, attackGap int) (*WorldState, error) {
 	current := state
-	for step := 0; step < 666; step++ {
+	moved := 0
+
+	for moved < 500 {
 		if manhattan(current.Self.X, current.Self.Y, targetX, targetY) <= attackGap {
 			return current, nil
 		}
-		path, ok := buildPath(current.Map.Terrain, current.Self.X, current.Self.Y, func(x, y int) bool {
+
+		path, ok := buildPath(current.Map.Terrain, current.Self.X, current.Self.Y, current.Map.NPCs, func(x, y int) bool {
 			return manhattan(x, y, targetX, targetY) <= attackGap
 		})
+
 		if !ok || len(path) == 0 {
-			return nil, fmt.Errorf("未找到前往目标区域的路径")
+			// 路被 NPC 堵死，等状态更新（NPC 移动后立刻重试）
+			next, err := client.waitState(2*time.Second, func(s *WorldState) bool {
+				return s.SessionVersion != current.SessionVersion
+			})
+			if err != nil {
+				return nil, fmt.Errorf("等待超时：%v", err)
+			}
+			current = next
+			continue
 		}
+
 		beforeVersion := current.SessionVersion
 		beforeX, beforeY := current.Self.X, current.Self.Y
 		_ = client.send(Message{Type: TypeMove, Dir: path[0]})
-		next, err := client.waitState(3*time.Second, func(state *WorldState) bool {
-			return state.SessionVersion != beforeVersion
+		next, err := client.waitState(3*time.Second, func(s *WorldState) bool {
+			return s.SessionVersion != beforeVersion
 		})
 		if err != nil {
 			return nil, err
 		}
 		current = next
-		if current.Self.X == beforeX && current.Self.Y == beforeY {
-			continue
+
+		if current.Self.X != beforeX || current.Self.Y != beforeY {
+			moved++
 		}
+		// 被挡住不等待，直接重新规划路径
 	}
 	return nil, fmt.Errorf("移动步数超限，未能抵达目标区域")
 }
 
-func buildPath(terrain []string, startX, startY int, goal func(x, y int) bool) ([]string, bool) {
+func buildPath(terrain []string, startX, startY int, npcs []NPCView, goal func(x, y int) bool) ([]string, bool) {
 	if len(terrain) == 0 || len(terrain[0]) == 0 {
 		return nil, false
 	}
+
+	// 把 NPC 位置建成集合
+	blocked := map[[2]int]bool{}
+	for _, npc := range npcs {
+		if npc.Alive {
+			blocked[[2]int{npc.X, npc.Y}] = true
+		}
+	}
+
 	type point struct {
 		x int
 		y int
@@ -661,6 +693,11 @@ func buildPath(terrain []string, startX, startY int, goal func(x, y int) bool) (
 				continue
 			}
 			if terrain[next.y][next.x] == '#' || visited[next] {
+				continue
+			}
+			// 目标格本身允许（即使有 NPC，因为攻击范围不需要真正踏上目标格）
+			// 中间路径格不能有 NPC
+			if blocked[[2]int{next.x, next.y}] && !goal(next.x, next.y) {
 				continue
 			}
 			visited[next] = true
