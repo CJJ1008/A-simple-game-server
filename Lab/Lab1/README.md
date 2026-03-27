@@ -1,6 +1,10 @@
 # Lab 1 · 网络编程：双人对战游戏（C/S 架构）
 
-## 1. 实验目的
+> **总分：20 分**
+
+---
+
+## 一、实验目的
 
 | 目标 | 说明 |
 |------|------|
@@ -11,7 +15,7 @@
 
 ---
 
-## 2. 游戏规则
+## 二、游戏规则
 
 ```
 地图：20 × 20，坐标 (X, Y)，X 向右，Y 向下
@@ -34,7 +38,7 @@
 
 ---
 
-## 3. 文件结构
+## 三、文件结构
 
 ```
 Lab1/
@@ -42,7 +46,7 @@ Lab1/
 │   ├── go.mod
 │   ├── protocol/message.go   ★ 需填写 Send() / Receive()
 │   ├── game/game.go          ★ 需填写 handleMove() / handleAttack()
-│   └── cmd/                  
+│   └── cmd/
 │       ├── server/main.go    已提供，无需修改
 │       └── client/main.go    已提供，无需修改
 │
@@ -55,11 +59,11 @@ Lab1/
 
 ---
 
-## 4. 实验任务
+## 四、实验任务与评分
 
 ### 任务 A：实现网络消息收发（`student/protocol/message.go`）
 
-#### A-1  `Send(msg Message) error`
+#### A-1  `Send(msg Message) error`　　**（4 分）**
 
 **功能**：将 `msg` 序列化为 JSON，通过 TCP 连接发送给对端。
 
@@ -75,7 +79,7 @@ func (c *Conn) Send(msg Message) error {
 }
 ```
 
-#### A-2  `Receive() (Message, error)`
+#### A-2  `Receive() (Message, error)`　　**（4 分）**
 
 **功能**：从 TCP 连接阻塞读取一条 JSON 消息并返回。
 
@@ -97,7 +101,7 @@ func (c *Conn) Receive() (Message, error) {
 
 ### 任务 B：实现游戏逻辑（`student/game/game.go`）
 
-#### B-1  `handleMove(p *Player, dir string) string`
+#### B-1  `handleMove(p *Player, dir string) string`　　**（6 分）**
 
 **功能**：将玩家 `p` 向 `dir` 方向移动一步，越界时保持不动。
 
@@ -108,7 +112,7 @@ func (c *Conn) Receive() (Message, error) {
 
 **边界约束**：`X ∈ [0, MapWidth-1]`，`Y ∈ [0, MapHeight-1]`
 
-#### B-2  `handleAttack(actor, target *Player) string`
+#### B-2  `handleAttack(actor, target *Player) string`　　**（6 分）**
 
 **功能**：actor 攻击 target，检查范围后扣血，HP 归零则标记死亡。
 
@@ -120,13 +124,27 @@ func (c *Conn) Receive() (Message, error) {
 
 ---
 
-## 5. 运行方法
+## 五、评分汇总
+
+| 任务 | 函数 | 分值 |
+|------|------|------|
+| A-1 | `Send` | 4 分 |
+| A-2 | `Receive` | 4 分 |
+| B-1 | `handleMove` | 6 分 |
+| B-2 | `handleAttack` | 6 分 |
+| **合计** | | **20 分** |
+
+> 评分以自动化测试通过情况为准，每个测试用例对应若干得分点，部分正确可获得部分分数。
+
+---
+
+## 六、运行方法
 
 > 平台兼容说明：
 > Lab1 的服务端和客户端代码可在 Windows、macOS、Linux 下运行。
 > 只要本机安装了 Go，即可直接使用 `go run` 启动。
 
-### 5.1 手动运行（两个终端）
+### 6.1 手动运行（两个终端）
 
 ```bash
 # 终端 1：启动服务器
@@ -141,18 +159,17 @@ cd student
 go run ./cmd/client
 ```
 
-
 ---
 
-## 6. 测试方法
+## 七、测试方法
 
-### 6.1 一键测试（推荐）
+### 7.1 一键测试（推荐）
 
 macOS / Linux：
 
 ```bash
 cd test
-./run_test.sh
+bash run_test.sh
 ```
 
 Windows：
@@ -175,7 +192,7 @@ go run ./runner/main.go
 3. 模拟两个客户端进行协议交互
 4. 验证功能是否符合预期，输出 ✅ PASS / ❌ FAIL
 
-### 6.2 运行单项测试
+### 7.2 运行单项测试
 
 ```bash
 # 先在另一个终端启动服务器
@@ -189,12 +206,7 @@ go run autotest.go 2   # 测试移动边界
 go run autotest.go 4   # 测试攻击范围
 ```
 
-> 说明：
-> 单项测试本身是跨平台的，真正需要区分平台的是一键测试脚本：
-> - macOS / Linux 使用 `run_test.sh`
-> - Windows 使用 `run_test.bat`
-
-### 6.3 测试用例说明
+### 7.3 测试用例说明
 
 | 编号 | 测试内容 | 对应任务 |
 |------|----------|----------|
@@ -208,7 +220,7 @@ go run autotest.go 4   # 测试攻击范围
 
 ---
 
-## 7. 常见问题
+## 八、常见问题
 
 **Q：`panic: Send 尚未实现`**
 A：删除 `panic(...)` 行，填入正确代码。

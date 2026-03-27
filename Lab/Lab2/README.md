@@ -1,11 +1,13 @@
 # Lab 2 · 并发编程：多人开放世界对战（Goroutine + 锁）
 
+> **总分：20 分**
+>
 > **前置要求**：已完成 Lab 1，理解基本的 TCP 通信和 JSON 消息收发。
 > Lab 2 在 Lab 1 的协议基础上扩展，重点新增**并发控制**。
 
 ---
 
-## 1. 实验目的
+## 一、实验目的
 
 | 目标 | 说明 |
 |------|------|
@@ -16,7 +18,7 @@
 
 ---
 
-## 2. 游戏规则（相比 Lab 1 的变化）
+## 二、游戏规则（相比 Lab 1 的变化）
 
 ```
 地图：30 × 20（更大，支持更多玩家）
@@ -29,7 +31,7 @@
 
 ---
 
-## 3. 并发架构图
+## 三、并发架构图
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -58,7 +60,7 @@
 
 ---
 
-## 4. 文件结构
+## 四、文件结构
 
 ```
 Lab2/
@@ -66,7 +68,7 @@ Lab2/
 │   ├── go.mod
 │   ├── protocol/message.go   已提供，无需修改
 │   ├── world/world.go        ★ 需填写 C-1~C-5 五个函数
-│   └── cmd/                  
+│   └── cmd/
 │       ├── server/main.go    ★ 需填写 D-1、D-2 两处 Goroutine 启动
 │       ├── client/main.go    ★ 需填写 E：接收 Goroutine
 │       └── client/raw_mode_*.go  已提供，即时按键所需的跨平台终端输入辅助
@@ -80,13 +82,13 @@ Lab2/
 
 ---
 
-## 5. 实验任务
+## 五、实验任务与评分
 
 ### 任务 C：并发安全的世界状态（`student/world/world.go`）
 
 > **核心规则**：任何对 `w.players` 的读写，都必须在持有锁的情况下进行。
 
-#### C-1  `AddPlayer`（写锁）
+#### C-1  `AddPlayer`（写锁）　　**（2 分）**
 
 向世界加入新玩家，返回其 ID 和对象指针。
 
@@ -95,7 +97,7 @@ Lab2/
 步骤：取 nextID → nextID++ → newPlayer → 存入 map → 返回
 ```
 
-#### C-2  `RemovePlayer`（写锁）
+#### C-2  `RemovePlayer`（写锁）　　**（2 分）**
 
 从世界移除指定 ID 的玩家。
 
@@ -104,7 +106,7 @@ Lab2/
 步骤：delete(w.players, id)
 ```
 
-#### C-3  `MovePlayer`（写锁）
+#### C-3  `MovePlayer`（写锁）　　**（3 分）**
 
 向指定方向移动玩家，越界时保持原位（逻辑与 Lab1 相同）。
 
@@ -113,7 +115,7 @@ Lab2/
 先从 map 取玩家，再做边界检查，再修改坐标
 ```
 
-#### C-4  `AttackPlayer`（写锁 + 死亡复活 Goroutine）
+#### C-4  `AttackPlayer`（写锁 + 死亡复活 Goroutine）　　**（4 分）**
 
 攻击范围内血量最低的存活对手，死亡后启动复活 Goroutine。
 
@@ -127,7 +129,7 @@ Lab2/
 > 因此主函数必须先**释放锁**，复活 Goroutine 才能获取锁。
 > 用 `defer w.mu.Unlock()` 可以确保主函数返回时自动释放，不会死锁。
 
-#### C-5  `GetSnapshot`（**读锁**）
+#### C-5  `GetSnapshot`（**读锁**）　　**（2 分）**
 
 返回所有玩家状态的快照切片，用于广播。
 
@@ -140,7 +142,7 @@ Lab2/
 
 ### 任务 D：Goroutine 启动（`student/cmd/server/main.go`）
 
-#### D-1  启动广播 Goroutine
+#### D-1  启动广播 Goroutine　　**（3 分）**
 
 ```go
 // 在 main 函数中，Accept 循环之前添加：
@@ -160,7 +162,7 @@ go func() {
 
 **关键**：必须用 `go func(){}()` 形式，否则会阻塞 `Accept` 循环。
 
-#### D-2  为每个连接启动独立 Goroutine
+#### D-2  为每个连接启动独立 Goroutine　　**（2 分）**
 
 ```go
 // Accept 循环内，将：
@@ -173,7 +175,7 @@ go handleClient(w, raw)  // ← 并发，可同时服务多人
 
 ---
 
-### 任务 E：客户端接收 Goroutine（`student/cmd/client/main.go`）
+### 任务 E：客户端接收 Goroutine（`student/cmd/client/main.go`）　　**（2 分）**
 
 Lab2 客户端已经改成即时按键模式，不需要按回车。主 Goroutine 会阻塞在单字节按键读取上，因此仍然必须在键盘读取循环之前启动一个后台 Goroutine 专门接收服务器消息：
 
@@ -207,13 +209,32 @@ go func() {
 ```
 
 **为什么需要两个 Goroutine？**
+
 - main Goroutine 阻塞在 `ReadByte()` 等待即时按键
 - 若没有第二个 Goroutine，就无法同时接收服务器推送的状态更新
 - 两个 Goroutine 并发运行，实现"边按键边收网络"
 
 ---
 
-## 6. 运行方法
+## 六、评分汇总
+
+| 任务 | 函数 / 位置 | 分值 |
+|------|------------|------|
+| C-1 | `AddPlayer`（写锁） | 2 分 |
+| C-2 | `RemovePlayer`（写锁） | 2 分 |
+| C-3 | `MovePlayer`（写锁 + 边界） | 3 分 |
+| C-4 | `AttackPlayer`（写锁 + 复活 Goroutine） | 4 分 |
+| C-5 | `GetSnapshot`（读锁） | 2 分 |
+| D-1 | 广播 Goroutine | 3 分 |
+| D-2 | handleClient Goroutine | 2 分 |
+| E   | 客户端接收 Goroutine | 2 分 |
+| **合计** | | **20 分** |
+
+> 评分以自动化测试通过情况为准。`-race` 检测到数据竞争将酌情扣分。
+
+---
+
+## 七、运行方法
 
 > 平台兼容说明：
 > Lab2 的服务端和客户端代码可在 Windows、macOS、Linux 下运行。
@@ -223,7 +244,7 @@ go func() {
 > 客户端现在使用即时按键输入，不需要回车。
 > `W/A/S/D` 移动，`F` 攻击，`H` 治疗，`Q` 退出。
 
-### 6.1 手动运行
+### 7.1 手动运行
 
 ```bash
 # 终端 1：启动服务器（支持任意多玩家）
@@ -236,7 +257,7 @@ go run ./cmd/client
 
 客户端启动后直接按键即可，不需要输入命令后再按回车。
 
-### 6.2 数据竞争检测（重要！）
+### 7.2 数据竞争检测（重要！）
 
 Go 提供内置的 race detector，可以自动检测多 Goroutine 并发访问共享变量但未加锁的情况：
 
@@ -255,21 +276,17 @@ Write at 0x... by goroutine 7:
 
 正确实现后，`-race` 模式下不应有任何 `DATA RACE` 警告。
 
-> 说明：
-> 某些平台或 Go 工具链组合下，`-race` 可能不可用。
-> 当前一键测试入口会自动尝试 `-race`，若不可用会回退到普通模式。
-
 ---
 
-## 7. 测试方法
+## 八、测试方法
 
-### 7.1 一键测试（推荐）
+### 8.1 一键测试（推荐）
 
 macOS / Linux：
 
 ```bash
 cd test
-./run_test.sh
+bash run_test.sh
 ```
 
 Windows：
@@ -286,7 +303,7 @@ cd test
 go run ./runner/main.go
 ```
 
-### 7.2 单项测试
+### 8.2 单项测试
 
 ```bash
 # 先启动服务器
@@ -300,12 +317,7 @@ go run autotest.go 4   # 移动边界
 go run autotest.go 7   # 广播 Goroutine
 ```
 
-> 说明：
-> 单项测试本身是跨平台的，真正需要区分平台的是一键测试脚本：
-> - macOS / Linux 使用 `run_test.sh`
-> - Windows 使用 `run_test.bat`
-
-### 7.3 测试用例说明
+### 8.3 测试用例说明
 
 | 编号 | 测试内容 | 对应任务 | 关键验证点 |
 |------|----------|----------|-----------|
@@ -319,7 +331,7 @@ go run autotest.go 7   # 广播 Goroutine
 
 ---
 
-## 8. 常见错误与排查
+## 九、常见错误与排查
 
 ### 错误：第 2 个客户端无法连接
 
@@ -344,7 +356,7 @@ go run autotest.go 7   # 广播 Goroutine
 ### 错误：客户端不显示其他玩家移动
 
 **原因**：任务 E 的接收 Goroutine 未实现，键盘读取阻塞了接收循环。
-**修复**：在 `go func(){...}()` 中处理 `TypeBroadcast`，调用 `renderState`。
+**修复**：在 `go func(){...}()` 中处理 `TypeBroadcast`，调用 `updateSnapshot`。
 
 ### 错误：按键没有即时生效，必须按回车
 
